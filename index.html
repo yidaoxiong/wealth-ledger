@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐷 我的记账小管家</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ===== 登录 / 注册 ===== -->
+  <div id="auth" class="screen">
+    <div class="auth-card">
+      <div class="logo">🐷</div>
+      <h1>我的记账小管家</h1>
+      <p class="sub">小老板专属 · 资产 / 赚钱 / 花钱 一目了然</p>
+
+      <div class="tabs-auth">
+        <button id="tab-login" class="tab-btn active" onclick="switchAuth('login')">登录</button>
+        <button id="tab-reg" class="tab-btn" onclick="switchAuth('reg')">注册</button>
+      </div>
+
+      <div id="auth-msg" class="msg"></div>
+
+      <form id="auth-form" onsubmit="return doAuth(event)">
+        <input id="auth-user" type="text" placeholder="给自己起个用户名" autocomplete="username" maxlength="32" />
+        <input id="auth-pass" type="password" placeholder="设置一个密码（记住它哦）" autocomplete="current-password" />
+        <button type="submit" id="auth-submit" class="big-btn">🚀 登录</button>
+      </form>
+      <p class="hint">小提示：密码要记得住，忘记就没法找回啦～</p>
+    </div>
+  </div>
+
+  <!-- ===== 主应用 ===== -->
+  <div id="app" class="screen hidden">
+    <header class="topbar">
+      <div class="brand">🐷 记账小管家</div>
+      <div class="user-area">
+        <span id="hello">嗨，小老板！</span>
+        <button class="ghost-btn" onclick="doLogout()">退出</button>
+      </div>
+    </header>
+
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="assets" onclick="showTab('assets')">💰 我的资产</button>
+      <button class="nav-btn" data-tab="earn" onclick="showTab('earn')">📈 赚钱情况</button>
+      <button class="nav-btn" data-tab="expense" onclick="showTab('expense')">🛒 个人开支</button>
+    </nav>
+
+    <main>
+      <!-- ===== 资产 ===== -->
+      <section id="tab-assets" class="tab">
+        <div class="totals">
+          <div class="total-card cash"><span>现金总资产</span><b id="sum-cash">0</b></div>
+          <div class="total-card fund"><span>基金总资产</span><b id="sum-fund">0</b></div>
+          <div class="total-card all"><span>全部加起来</span><b id="sum-all">0</b></div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <h2>💵 现金资产</h2>
+            <p class="muted">比如：存钱罐、银行卡、压岁钱…</p>
+            <div class="form-row">
+              <input id="cash-name" placeholder="项目（如：存钱罐）" />
+              <input id="cash-amount" type="number" placeholder="金额" min="0" step="0.01" />
+              <button class="add-btn" onclick="addCash()">➕ 添加</button>
+            </div>
+            <ul id="cash-list" class="list"></ul>
+          </div>
+
+          <div class="card">
+            <h2>📊 基金资产</h2>
+            <p class="muted">比如：某只基金、股票账户…</p>
+            <div class="form-row">
+              <input id="fund-name" placeholder="基金名称" />
+              <input id="fund-shares" type="number" placeholder="份额" min="0" step="0.0001" />
+              <input id="fund-value" type="number" placeholder="市值" min="0" step="0.01" />
+              <button class="add-btn" onclick="addFund()">➕ 添加</button>
+            </div>
+            <ul id="fund-list" class="list"></ul>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>📈 资产变动曲线</h2>
+            <div class="snap-row">
+              <input id="snap-date" type="date" title="记录日期（想哪天记就选哪天）" />
+              <button class="snap-btn" onclick="takeSnapshot()">📸 记录资产</button>
+            </div>
+          </div>
+          <p class="muted">想什么时候记就什么时候记，曲线会按你选的日期画出新的一点～</p>
+          <div class="chart-box"><canvas id="asset-chart"></canvas></div>
+        </div>
+      </section>
+
+      <!-- ===== 赚钱 ===== -->
+      <section id="tab-earn" class="tab hidden">
+        <div class="card">
+          <h2>📈 记一笔赚钱</h2>
+          <p class="muted">卖东西、做小生意、帮人干活都能记！</p>
+          <div class="form-grid">
+            <label>时间<input id="earn-date" type="date" /></label>
+            <label>产品或项目<input id="earn-product" placeholder="如：旧玩具 / 柠檬水" /></label>
+            <label>成本 / 进货价<input id="earn-cost" type="number" placeholder="0" min="0" step="0.01" /></label>
+            <label>销售价格<input id="earn-price" type="number" placeholder="0" min="0" step="0.01" /></label>
+            <label>数量<input id="earn-qty" type="number" placeholder="1" min="0" step="1" /></label>
+            <div class="calc-preview" id="earn-preview">销售额 0 · 盈利 0</div>
+          </div>
+          <button class="big-btn" onclick="addEarning()">➕ 记下来</button>
+
+          <div class="summary" id="earn-summary"></div>
+          <ul id="earn-list" class="list"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>📊 收入与盈利统计</h2>
+            <div class="seg">
+              <button class="seg-btn active" data-p="month" onclick="setEarnPeriod('month')">按月</button>
+              <button class="seg-btn" data-p="year" onclick="setEarnPeriod('year')">按年</button>
+            </div>
+          </div>
+          <p class="muted">绿柱 = 总收入，紫柱 = 盈利（可按月 / 按年切换）</p>
+          <div class="chart-box"><canvas id="earn-chart"></canvas></div>
+        </div>
+      </section>
+
+      <!-- ===== 开支 ===== -->
+      <section id="tab-expense" class="tab hidden">
+        <div class="card">
+          <h2>🛒 记一笔花钱</h2>
+          <p class="muted">零食、玩具、书本…钱花在哪都看得见。</p>
+          <div class="form-row">
+            <input id="exp-item" placeholder="花在哪（如：冰淇淋）" />
+            <input id="exp-amount" type="number" placeholder="金额" min="0" step="0.01" />
+            <input id="exp-date" type="date" />
+            <span class="add-btn" onclick="addExpense()">➕ 添加</span>
+          </div>
+
+          <div class="summary" id="exp-summary"></div>
+          <ul id="exp-list" class="list"></ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>📊 消费统计</h2>
+            <div class="seg">
+              <button class="seg-btn active" data-p="month" onclick="setExpPeriod('month')">按月</button>
+              <button class="seg-btn" data-p="year" onclick="setExpPeriod('year')">按年</button>
+            </div>
+          </div>
+          <p class="muted">红柱 = 各时段总消费（可按月 / 按年切换）</p>
+          <div class="chart-box"><canvas id="exp-chart"></canvas></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
