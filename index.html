@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=20260819" />
+  <link rel="stylesheet" href="style.css?v=20260819-2" />
 </head>
 <body>
   <!-- ===== 登录 / 注册 ===== -->
@@ -55,45 +55,48 @@
       <section id="tab-assets" class="tab">
         <div class="export-bar"><button class="ghost-btn" onclick="exportAssets()">📥 导出 Excel</button></div>
         <div class="totals">
-          <div class="total-card cash"><span>现金总资产</span><b id="sum-cash">0</b></div>
-          <div class="total-card fund"><span>基金总资产</span><b id="sum-fund">0</b></div>
-          <div class="total-card all"><span>全部加起来</span><b id="sum-all">0</b></div>
+          <div class="total-card cash"><span>最近现金</span><b id="sum-cash">0</b></div>
+          <div class="total-card fund"><span>最近基金</span><b id="sum-fund">0</b></div>
+          <div class="total-card all"><span>最近总资产</span><b id="sum-all">0</b></div>
         </div>
+        <p class="muted" id="latest-snap-date" style="text-align:center;margin:-6px 0 12px"></p>
 
-        <div class="grid-2">
-          <div class="card">
-            <h2>💵 现金资产</h2>
-            <p class="muted">比如：存钱罐、银行卡、压岁钱…</p>
-            <div class="form-row">
-              <input id="cash-name" placeholder="项目（如：存钱罐）" />
-              <input id="cash-amount" type="number" placeholder="金额" min="0" step="0.01" />
-              <button class="add-btn" onclick="addCash()">➕ 添加</button>
-            </div>
-            <ul id="cash-list" class="list"></ul>
+        <div class="card">
+          <h2>📸 记一笔当日资产</h2>
+          <p class="muted">每个日期各记一次，记的是"当天"每个项目的价值，不会和别的日期加起来～</p>
+          <div class="form-row">
+            <label class="date-label">日期 <input id="snap-date" type="date" onchange="onSnapDate()" title="想哪天记就选哪天" /></label>
           </div>
 
-          <div class="card">
-            <h2>📊 基金资产</h2>
-            <p class="muted">比如：某只基金、股票账户…</p>
-            <div class="form-row">
-              <input id="fund-name" placeholder="基金名称" />
-              <input id="fund-shares" type="number" placeholder="份额" min="0" step="0.0001" />
-              <input id="fund-value" type="number" placeholder="市值" min="0" step="0.01" />
-              <button class="add-btn" onclick="addFund()">➕ 添加</button>
-            </div>
-            <ul id="fund-list" class="list"></ul>
+          <h3 class="sub-h">💵 现金项目（当日市值）</h3>
+          <div class="form-row">
+            <input id="snap-cash-name" placeholder="项目名称，如：存钱罐" />
+            <input id="snap-cash-amount" type="number" placeholder="当日市值" min="0" step="0.01" />
+            <button class="add-btn" onclick="addSnapCash()">➕ 添加现金项目</button>
           </div>
+          <ul id="snap-cash-list" class="list"></ul>
+
+          <h3 class="sub-h">📊 基金项目（当日份额 + 市值）</h3>
+          <div class="form-row">
+            <input id="snap-fund-name" placeholder="基金名称" />
+            <input id="snap-fund-shares" type="number" placeholder="份额" min="0" step="0.0001" />
+            <input id="snap-fund-value" type="number" placeholder="当日市值" min="0" step="0.01" />
+            <button class="add-btn" onclick="addSnapFund()">➕ 添加基金项目</button>
+          </div>
+          <ul id="snap-fund-list" class="list"></ul>
+
+          <div class="snap-summary" id="snap-summary">现金 ¥0 + 基金 ¥0 = 总资产 ¥0</div>
+          <button class="big-btn" onclick="saveSnapshot()">📸 保存当日资产</button>
         </div>
 
         <div class="card">
-          <div class="card-head">
-            <h2>📈 资产变动曲线</h2>
-            <div class="snap-row">
-              <input id="snap-date" type="date" title="记录日期（想哪天记就选哪天）" />
-              <button class="snap-btn" onclick="takeSnapshot()">📸 记录资产</button>
-            </div>
-          </div>
-          <p class="muted">想什么时候记就什么时候记，曲线会按你选的日期画出新的一点～</p>
+          <h2>🗂️ 资产快照历史</h2>
+          <ul id="snap-list" class="list"></ul>
+        </div>
+
+        <div class="card">
+          <h2>📈 资产变动曲线</h2>
+          <p class="muted">每个日期的总资产，一目了然～</p>
           <div class="chart-box"><canvas id="asset-chart"></canvas></div>
         </div>
       </section>
@@ -165,6 +168,6 @@
 
   <script src="chart.umd.min.js"></script>
   <script src="xlsx.full.min.js"></script>
-  <script src="app.js?v=20260819"></script>
+  <script src="app.js?v=20260819-2"></script>
 </body>
 </html>

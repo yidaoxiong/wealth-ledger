@@ -151,17 +151,6 @@ main { padding: 16px 16px 48px; max-width: 960px; margin: 0 auto; }
   grid-column: 1 / -1; background: var(--green-soft); border: 1px solid rgba(20,158,97,0.25);
   border-radius: var(--radius); padding: 11px 14px; font-weight: 700; color: var(--green); text-align: center;
 }
-.snap-btn {
-  border: 1px solid var(--purple); cursor: pointer; padding: 10px 16px; border-radius: var(--radius);
-  font-weight: 600; background: var(--white); color: var(--purple); font-family: var(--font);
-}
-.snap-btn:hover { background: var(--purple-soft); }
-.snap-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.snap-row input[type="date"] {
-  padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius);
-  font-size: 14px; font-family: var(--font); color: var(--ink); background: var(--white); outline: none;
-}
-.snap-row input[type="date"]:focus { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
 
 /* ===== 列表 ===== */
 .list { list-style: none; padding: 0; margin: 14px 0 0; }
@@ -178,6 +167,30 @@ main { padding: 16px 16px 48px; max-width: 960px; margin: 0 auto; }
 }
 .list li .del:hover { background: rgba(224,65,62,0.18); }
 .list .empty { color: var(--silver); text-align: center; padding: 14px; background: transparent; border: 1px dashed var(--border); }
+
+/* ===== 资产快照（按日期记录） ===== */
+.sub-h { margin: 18px 0 8px; font-size: 14px; color: var(--gray); }
+.date-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gray); font-weight: 600; }
+.snap-summary {
+  margin-top: 16px; padding: 13px 16px; border-radius: var(--radius);
+  background: var(--purple-soft); color: var(--ink); font-weight: 700; font-size: 15px; text-align: center;
+}
+.snap-item { align-items: flex-start !important; }
+.snap-item .snap-detail { flex: 1; min-width: 0; }
+.snap-item .snap-detail .name { font-weight: 600; color: var(--ink); }
+.snap-item .snap-detail .meta { color: var(--silver); font-size: 13px; margin-left: 6px; }
+.snap-sub {
+  list-style: none; margin: 8px 0 0; padding: 0;
+  border-top: 1px dashed var(--border); padding-top: 8px;
+}
+.snap-sub li {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 13px; color: var(--gray); padding: 3px 0;
+}
+.snap-sub li span:last-child { font-weight: 600; color: var(--ink); white-space: nowrap; }
+.snap-ops { display: flex; gap: 6px; flex-shrink: 0; }
+.snap-ops .del { background: var(--bg); border: 1px solid var(--border); color: var(--gray); }
+.snap-ops .del:hover { border-color: var(--purple); color: var(--purple); background: var(--purple-soft); }
 
 /* ===== 图表 ===== */
 .chart-box { position: relative; height: 300px; margin-top: 10px; }

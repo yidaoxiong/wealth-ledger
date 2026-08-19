@@ -140,6 +140,7 @@ const state = {
   data: null,
   earnPeriod: 'month',
   expPeriod: 'month',
+  snapDraft: null,
 };
 const charts = {};
 
@@ -245,6 +246,7 @@ function enterApp() {
   if (!$('#exp-date').value) $('#exp-date').value = today;
   if (!$('#snap-date').value) $('#snap-date').value = today;
   state.data = loadData();
+  loadDraft($('#snap-date').value);
   renderAll();
 }
 
@@ -254,47 +256,187 @@ function renderAll() {
   renderExpenses();
 }
 
-/* ---------- 资产 ---------- */
+/* ---------- 资产（按日期记录每个项目的当日市值） ---------- */
+function snapTotals(s) {
+  if (Array.isArray(s.entries)) {
+    let cash = 0, fund = 0;
+    s.entries.forEach((e) => {
+      if (e.type === 'cash') cash += num(e.amount);
+      else if (e.type === 'fund') fund += num(e.marketValue);
+    });
+    return { cash, fund, total: cash + fund };
+  }
+  /* 兼容旧格式汇总快照 {date,cash,fund,total} */
+  return { cash: num(s.cash), fund: num(s.fund), total: num(s.total) };
+}
+
 function renderAssets() {
   const d = state.data;
-  const sumCash = d.cash.reduce((s, i) => s + num(i.amount), 0);
-  const sumFund = d.funds.reduce((s, i) => s + num(i.marketValue), 0);
-  $('#sum-cash').textContent = fmt(sumCash);
-  $('#sum-fund').textContent = fmt(sumFund);
-  $('#sum-all').textContent = fmt(sumCash + sumFund);
+  const snaps = [...d.snapshots].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = snaps[snaps.length - 1];
+  if (latest) {
+    const t = snapTotals(latest);
+    $('#sum-cash').textContent = fmt(t.cash);
+    $('#sum-fund').textContent = fmt(t.fund);
+    $('#sum-all').textContent = fmt(t.total);
+    $('#latest-snap-date').textContent = '📅 最近记录：' + latest.date;
+  } else {
+    $('#sum-cash').textContent = fmt(0);
+    $('#sum-fund').textContent = fmt(0);
+    $('#sum-all').textContent = fmt(0);
+    $('#latest-snap-date').textContent = '还没有资产记录，先记一笔吧～';
+  }
+  renderSnapEditor();
+  renderSnapList();
+  drawAssetChart();
+}
 
-  const cl = $('#cash-list');
-  cl.innerHTML = d.cash.length ? '' : '<li class="empty">还没有现金资产，加一笔吧～</li>';
+/* ---- 当日快照编辑器（草稿在 state.snapDraft，保存才写入） ---- */
+function loadDraft(date) {
+  const s = state.data.snapshots.find((x) => x.date === date);
+  const cash = [], fund = [];
+  if (s && Array.isArray(s.entries)) {
+    s.entries.forEach((e) => {
+      if (e.type === 'cash') cash.push({ id: e.id || uid(), name: e.name, amount: e.amount });
+      else if (e.type === 'fund') fund.push({ id: e.id || uid(), name: e.name, shares: e.shares, marketValue: e.marketValue });
+    });
+  } else if (s) {
+    /* 旧格式汇总快照 → 转成条目（保存后即为新格式） */
+    cash.push({ id: uid(), name: '现金（旧记录）', amount: num(s.cash) });
+    fund.push({ id: uid(), name: '基金（旧记录）', shares: null, marketValue: num(s.fund) });
+  }
+  state.snapDraft = { date, cash, fund };
+}
+
+function onSnapDate() { loadDraft($('#snap-date').value); renderSnapEditor(); }
+
+function addSnapCash() {
+  const name = $('#snap-cash-name').value.trim();
+  const amount = $('#snap-cash-amount').value;
+  if (!name || amount === '') return alert('项目名称和当日市值都要填哦');
+  state.snapDraft.cash.push({ id: uid(), name, amount: num(amount) });
+  $('#snap-cash-name').value = ''; $('#snap-cash-amount').value = '';
+  renderSnapEditor();
+}
+function addSnapFund() {
+  const name = $('#snap-fund-name').value.trim();
+  const shares = $('#snap-fund-shares').value;
+  const marketValue = $('#snap-fund-value').value;
+  if (!name || marketValue === '') return alert('基金名称和当日市值都要填哦');
+  state.snapDraft.fund.push({ id: uid(), name, shares: shares === '' ? null : num(shares), marketValue: num(marketValue) });
+  $('#snap-fund-name').value = ''; $('#snap-fund-shares').value = ''; $('#snap-fund-value').value = '';
+  renderSnapEditor();
+}
+function delSnapItem(type, id) {
+  const arr = state.snapDraft[type];
+  const i = arr.findIndex((x) => x.id === id);
+  if (i >= 0) arr.splice(i, 1);
+  renderSnapEditor();
+}
+function delBtnDraft(type, id) {
+  const b = document.createElement('button');
+  b.className = 'del'; b.textContent = '✕'; b.title = '删除这个项目';
+  b.onclick = () => delSnapItem(type, id);
+  return b;
+}
+
+function renderSnapEditor() {
+  const d = state.snapDraft || { date: '', cash: [], fund: [] };
+  const cl = $('#snap-cash-list');
+  cl.innerHTML = d.cash.length ? '' : '<li class="empty">还没有现金项目，上面加一个～</li>';
   d.cash.forEach((i) => {
     const li = document.createElement('li');
     li.innerHTML = `<span><span class="name">${esc(i.name)}</span></span><span class="val">${fmt(i.amount)}</span>`;
-    li.appendChild(delBtn(d.cash, i.id));
+    li.appendChild(delBtnDraft('cash', i.id));
     cl.appendChild(li);
   });
-
-  const fl = $('#fund-list');
-  fl.innerHTML = d.funds.length ? '' : '<li class="empty">还没有基金资产，加一笔吧～</li>';
-  d.funds.forEach((i) => {
+  const fl = $('#snap-fund-list');
+  fl.innerHTML = d.fund.length ? '' : '<li class="empty">还没有基金项目，上面加一个～</li>';
+  d.fund.forEach((i) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span><span class="name">${esc(i.name)}</span><span class="meta"> 份额 ${num(i.shares)} · 市值</span></span><span class="val">${fmt(i.marketValue)}</span>`;
-    li.appendChild(delBtn(d.funds, i.id));
+    const meta = i.shares != null ? `份额 ${num(i.shares)} · ` : '';
+    li.innerHTML = `<span><span class="name">${esc(i.name)}</span><span class="meta"> ${meta}当日市值</span></span><span class="val">${fmt(i.marketValue)}</span>`;
+    li.appendChild(delBtnDraft('fund', i.id));
     fl.appendChild(li);
   });
+  const cash = d.cash.reduce((s, i) => s + num(i.amount), 0);
+  const fund = d.fund.reduce((s, i) => s + num(i.marketValue), 0);
+  $('#snap-summary').textContent = `现金 ${fmt(cash)} + 基金 ${fmt(fund)} = 总资产 ${fmt(cash + fund)}`;
+}
 
-  drawAssetChart();
+function saveSnapshot() {
+  const date = $('#snap-date').value;
+  if (!date) return alert('先选个日期哦');
+  const d = state.snapDraft;
+  if (!d || (!d.cash.length && !d.fund.length)) return alert('先添加至少一个项目再保存吧～');
+  const entries = [
+    ...d.cash.map((i) => ({ type: 'cash', id: i.id, name: i.name, amount: i.amount })),
+    ...d.fund.map((i) => ({ type: 'fund', id: i.id, name: i.name, shares: i.shares, marketValue: i.marketValue })),
+  ];
+  const t = snapTotals({ entries });
+  const snap = state.data.snapshots.find((x) => x.date === date);
+  if (snap) snap.entries = entries;
+  else state.data.snapshots.push({ date, entries });
+  saveData(state.data);
+  alert(date + ' 已保存：总资产 ' + fmt(t.total) + '（现金 ' + fmt(t.cash) + ' + 基金 ' + fmt(t.fund) + '）');
+  renderAssets();
+}
+
+/* ---- 快照历史 ---- */
+function renderSnapList() {
+  const snaps = [...state.data.snapshots].sort((a, b) => b.date.localeCompare(a.date));
+  const el = $('#snap-list');
+  el.innerHTML = snaps.length ? '' : '<li class="empty">还没有快照，上面记一笔吧～</li>';
+  snaps.forEach((s) => {
+    const t = snapTotals(s);
+    const li = document.createElement('li');
+    li.className = 'snap-item';
+    const detail = document.createElement('div');
+    detail.className = 'snap-detail';
+    detail.innerHTML = `<span class="name">📅 ${s.date}</span> <span class="meta">现金 ${fmt(t.cash)} · 基金 ${fmt(t.fund)} · 合计 <b style="color:#7132f5">${fmt(t.total)}</b></span>`;
+    if (Array.isArray(s.entries) && s.entries.length) {
+      const sub = document.createElement('ul');
+      sub.className = 'snap-sub';
+      s.entries.forEach((e) => {
+        const subli = document.createElement('li');
+        if (e.type === 'cash') subli.innerHTML = `<span>${esc(e.name)}</span><span>${fmt(e.amount)}</span>`;
+        else subli.innerHTML = `<span>${esc(e.name)}</span><span>${e.shares != null ? num(e.shares) + ' 份 · ' : ''}${fmt(e.marketValue)}</span>`;
+        sub.appendChild(subli);
+      });
+      detail.appendChild(sub);
+    }
+    li.appendChild(detail);
+    const ops = document.createElement('div');
+    ops.className = 'snap-ops';
+    const eb = document.createElement('button');
+    eb.className = 'del'; eb.textContent = '✎'; eb.title = '编辑这天';
+    eb.onclick = () => { $('#snap-date').value = s.date; loadDraft(s.date); renderSnapEditor(); };
+    const db = document.createElement('button');
+    db.className = 'del'; db.textContent = '✕'; db.title = '删除这天';
+    db.onclick = () => {
+      if (!confirm('删除 ' + s.date + ' 的资产快照？')) return;
+      state.data.snapshots = state.data.snapshots.filter((x) => x.date !== s.date);
+      saveData(state.data);
+      renderAssets();
+    };
+    ops.appendChild(eb); ops.appendChild(db);
+    li.appendChild(ops);
+    el.appendChild(li);
+  });
 }
 
 function drawAssetChart() {
   const snaps = [...state.data.snapshots].sort((a, b) => a.date.localeCompare(b.date));
   const labels = snaps.map((s) => s.date);
+  const t = snaps.map((s) => snapTotals(s));
   const cfg = {
     type: 'line',
     data: {
       labels,
       datasets: [
-        { label: '总资产', data: snaps.map((s) => s.total), borderColor: '#7132f5', backgroundColor: 'rgba(113,50,245,0.10)', fill: true, tension: 0.3, borderWidth: 3 },
-        { label: '现金', data: snaps.map((s) => s.cash), borderColor: '#5741d8', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2 },
-        { label: '基金', data: snaps.map((s) => s.fund), borderColor: '#9497a9', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2 },
+        { label: '总资产', data: t.map((x) => x.total), borderColor: '#7132f5', backgroundColor: 'rgba(113,50,245,0.10)', fill: true, tension: 0.3, borderWidth: 3 },
+        { label: '现金', data: t.map((x) => x.cash), borderColor: '#5741d8', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2 },
+        { label: '基金', data: t.map((x) => x.fund), borderColor: '#9497a9', backgroundColor: 'transparent', tension: 0.3, borderWidth: 2 },
       ],
     },
     options: baseOpts('日期', '金额'),
@@ -445,38 +587,6 @@ function delBtn(arr, id) {
   };
   return b;
 }
-async function addCash() {
-  const name = $('#cash-name').value.trim();
-  const amount = $('#cash-amount').value;
-  if (!name || amount === '') return alert('项目和金额都要填哦');
-  state.data.cash.push({ id: uid(), name, amount: num(amount), updatedAt: Date.now() });
-  saveData(state.data);
-  $('#cash-name').value = ''; $('#cash-amount').value = '';
-  renderAssets();
-}
-async function addFund() {
-  const name = $('#fund-name').value.trim();
-  const shares = $('#fund-shares').value;
-  const marketValue = $('#fund-value').value;
-  if (!name || marketValue === '') return alert('基金名称和市值要填哦');
-  state.data.funds.push({ id: uid(), name, shares: num(shares), marketValue: num(marketValue), updatedAt: Date.now() });
-  saveData(state.data);
-  $('#fund-name').value = ''; $('#fund-shares').value = ''; $('#fund-value').value = '';
-  renderAssets();
-}
-async function takeSnapshot() {
-  let date = $('#snap-date').value;
-  if (!date) { date = new Date().toISOString().slice(0, 10); $('#snap-date').value = date; }
-  const totalCash = state.data.cash.reduce((s, i) => s + num(i.amount), 0);
-  const totalFund = state.data.funds.reduce((s, i) => s + num(i.marketValue), 0);
-  const total = totalCash + totalFund;
-  const snap = state.data.snapshots.find((s) => s.date === date);
-  if (snap) { snap.cash = totalCash; snap.fund = totalFund; snap.total = total; }
-  else state.data.snapshots.push({ date, cash: totalCash, fund: totalFund, total });
-  saveData(state.data);
-  alert(date + ' 资产已记录：总共 ' + fmt(total) + '（现金 ' + fmt(totalCash) + ' + 基金 ' + fmt(totalFund) + '）');
-  renderAssets();
-}
 async function addEarning() {
   const date = $('#earn-date').value;
   const product = $('#earn-product').value.trim();
@@ -524,14 +634,28 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 function exportAssets() {
   if (typeof XLSX === 'undefined') return alert('Excel 库还没加载好，刷新一下试试～');
   const d = state.data;
-  const wb = XLSX.utils.book_new();
-  const cashAoA = [['项目名称', '金额(¥)']].concat(d.cash.map((i) => [i.name, num(i.amount)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cashAoA), '现金资产');
-  const fundAoA = [['基金名称', '份额', '市值(¥)']].concat(d.funds.map((i) => [i.name, num(i.shares), num(i.marketValue)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fundAoA), '基金资产');
   const snaps = [...d.snapshots].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  const snapAoA = [['日期', '现金(¥)', '基金(¥)', '总资产(¥)']].concat(snaps.map((s) => [s.date, num(s.cash), num(s.fund), num(s.total)]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(snapAoA), '资产快照');
+  const wb = XLSX.utils.book_new();
+
+  /* 现金明细：按日期展开每个现金项目的当日市值 */
+  const cashRows = [['日期', '现金项目', '当日市值(¥)']];
+  snaps.forEach((s) => {
+    if (Array.isArray(s.entries)) s.entries.filter((e) => e.type === 'cash').forEach((e) => cashRows.push([s.date, e.name, num(e.amount)]));
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cashRows), '现金明细');
+
+  /* 基金明细：按日期展开每个基金项目的当日份额+市值 */
+  const fundRows = [['日期', '基金项目', '份额', '当日市值(¥)']];
+  snaps.forEach((s) => {
+    if (Array.isArray(s.entries)) s.entries.filter((e) => e.type === 'fund').forEach((e) => fundRows.push([s.date, e.name, e.shares != null ? num(e.shares) : '', num(e.marketValue)]));
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fundRows), '基金明细');
+
+  /* 资产快照：每日现金/基金合计 + 总资产 */
+  const snapRows = [['日期', '现金合计(¥)', '基金合计(¥)', '总资产(¥)']];
+  snaps.forEach((s) => { const t = snapTotals(s); snapRows.push([s.date, t.cash, t.fund, t.total]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(snapRows), '资产快照');
+
   XLSX.writeFile(wb, '资产_' + state.username + '_' + todayStr() + '.xlsx');
 }
 function exportEarnings() {
@@ -566,9 +690,10 @@ window.switchAuth = switchAuth;
 window.doAuth = doAuth;
 window.doLogout = doLogout;
 window.showTab = showTab;
-window.addCash = addCash;
-window.addFund = addFund;
-window.takeSnapshot = takeSnapshot;
+window.addSnapCash = addSnapCash;
+window.addSnapFund = addSnapFund;
+window.saveSnapshot = saveSnapshot;
+window.onSnapDate = onSnapDate;
 window.addEarning = addEarning;
 window.addExpense = addExpense;
 window.setEarnPeriod = setEarnPeriod;
