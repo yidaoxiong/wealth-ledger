@@ -1,0 +1,8 @@
+name = "wealth-ledger"
+compatibility_date = "2026-08-01"
+pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "wealth_db"
+database_name = "wealth-db"
+database_id = "104cf05a-186f-46b4-bfbe-1ffde4536c7e"

@@ -19,7 +19,7 @@
 
       <div class="tabs-auth">
         <button id="tab-login" class="tab-btn active" onclick="switchAuth('login')">登录</button>
-        <button id="tab-reg" class="tab-btn" onclick="switchAuth('reg')">注册</button>
+        <button id="tab-reg" class="tab-btn" onclick="switchAuth('register')">注册</button>
       </div>
 
       <div id="auth-msg" class="msg"></div>
@@ -29,7 +29,7 @@
         <input id="auth-pass" type="password" placeholder="设置一个密码（记住它哦）" autocomplete="current-password" />
         <button type="submit" id="auth-submit" class="big-btn">🚀 登录</button>
       </form>
-      <p class="hint">小提示：密码要记得住，忘记就没法找回啦～</p>
+      <p class="hint">☁️ 账户数据自动云同步，换设备登录也不丢～ 密码要记得住，忘记就没法找回啦</p>
     </div>
   </div>
 
@@ -52,6 +52,7 @@
     <main>
       <!-- ===== 资产 ===== -->
       <section id="tab-assets" class="tab">
+        <div class="export-bar"><button class="ghost-btn" onclick="exportAssets()">📥 导出 Excel</button></div>
         <div class="totals">
           <div class="total-card cash"><span>现金总资产</span><b id="sum-cash">0</b></div>
           <div class="total-card fund"><span>基金总资产</span><b id="sum-fund">0</b></div>
@@ -111,6 +112,7 @@
           </div>
           <button class="big-btn" onclick="addEarning()">➕ 记下来</button>
 
+          <div class="export-bar"><button class="ghost-btn" onclick="exportEarnings()">📥 导出 Excel</button></div>
           <div class="summary" id="earn-summary"></div>
           <ul id="earn-list" class="list"></ul>
         </div>
@@ -140,6 +142,7 @@
             <span class="add-btn" onclick="addExpense()">➕ 添加</span>
           </div>
 
+          <div class="export-bar"><button class="ghost-btn" onclick="exportExpenses()">📥 导出 Excel</button></div>
           <div class="summary" id="exp-summary"></div>
           <ul id="exp-list" class="list"></ul>
         </div>
@@ -160,6 +163,7 @@
   </div>
 
   <script src="chart.umd.min.js"></script>
+  <script src="xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

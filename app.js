@@ -17,7 +17,66 @@ const fmt = (n) => '¥' + Number(n || 0).toLocaleString('zh-CN', { minimumFracti
 function getUsers() { return lsGet(LS_USERS, {}); }
 function curUser() { return localStorage.getItem(LS_SESSION) || null; }
 function loadData() { const u = curUser(); return u ? lsGet(dataKey(u), emptyData()) : emptyData(); }
-function saveData(d) { const u = curUser(); if (u) lsSet(dataKey(u), d); }
+function saveData(d) {
+  const u = curUser();
+  if (!u) return;
+  lsSet(dataKey(u), d);
+  markDirty(u, true);
+  schedulePush(u, d);
+}
+
+/* ---------- 云端同步（Cloudflare D1） ---------- */
+const syncKey = (u) => 'ledger_sync_v1_' + u;
+function getSync(u) { return lsGet(syncKey(u), {}); }
+function setSync(u, obj) { lsSet(syncKey(u), obj); }
+function markDirty(u, v) { const s = getSync(u); s.dirty = v; setSync(u, s); }
+
+async function apiPost(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(j.error || 'http_' + res.status), { code: j.error, status: res.status });
+  return j;
+}
+
+let pushTimer = null;
+function schedulePush(u, data) {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    const s = getSync(u);
+    if (!s.token) return;
+    try {
+      await apiPost('/api/push', { username: u, token: s.token, data: JSON.stringify(data) });
+      markDirty(u, false);
+    } catch (e) { console.warn('云端同步失败（下次保存会自动重试）', e.message); }
+  }, 1200);
+}
+
+async function cloudPull(u) {
+  const s = getSync(u);
+  if (!s.token) return null;
+  const j = await apiPost('/api/pull', { username: u, token: s.token });
+  return j.data ? JSON.parse(j.data) : null;
+}
+
+/* 登录后同步：云端有最新数据且本地无未同步改动 → 采用云端；否则以本地为准并推送 */
+async function syncAfterAuth(username) {
+  const sync = getSync(username);
+  if (!sync.token) return;
+  try {
+    const cloud = await cloudPull(username);
+    if (cloud && !sync.dirty) {
+      lsSet(dataKey(username), cloud);
+      state.data = cloud;
+      renderAll();
+    } else {
+      schedulePush(username, lsGet(dataKey(username), emptyData()));
+    }
+  } catch (e) { console.warn('云端拉取失败，先用本地数据', e.message); }
+}
 
 /* ---------- 密码哈希（浏览器内 PBKDF2，盐值随机） ---------- */
 function randSalt() { const a = new Uint8Array(16); crypto.getRandomValues(a); return [...a].map((b) => b.toString(16).padStart(2, '0')).join(''); }
@@ -55,24 +114,68 @@ async function doAuth(e) {
   const username = $('#auth-user').value.trim();
   const password = $('#auth-pass').value;
   if (!username || !password) return setMsg('用户名和密码都要填哦');
+  setMsg(authMode === 'login' ? '登录中…' : '注册中…');
   const users = getUsers();
   try {
-    if (authMode === 'register') {
-      if (users[username]) return setMsg('这个用户名已经被注册啦');
+    let token = null;
+    if (authMode === 'register' || authMode === 'reg') {
+      /* ---- 注册：云端建账户 ---- */
       const salt = randSalt();
-      users[username] = { salt, hash: await hashPw(password, salt) };
+      const hash = await hashPw(password, salt);
+      try {
+        const j = await apiPost('/api/register', { username, salt, hash });
+        token = j.token;
+      } catch (err) {
+        if (err.code === 'exists') return setMsg('这个用户名已经被注册啦');
+        throw err;
+      }
+      users[username] = { salt, hash };
       lsSet(LS_USERS, users);
-      lsSet(dataKey(username), emptyData());
+      if (!lsGet(dataKey(username), null)) lsSet(dataKey(username), emptyData());
+      setSync(username, { token, dirty: false });
     } else {
-      const u = users[username];
-      if (!u) return setMsg('用户名或密码不对哦');
-      if ((await hashPw(password, u.salt)) !== u.hash) return setMsg('用户名或密码不对哦');
+      /* ---- 登录：云端验证 ---- */
+      let salt;
+      try {
+        const j = await apiPost('/api/salt', { username });
+        salt = j.salt;
+      } catch (err) {
+        if (err.code === 'no_user') {
+          /* 云端没有，但本地有 → 老账户自动迁移上云 */
+          const local = users[username];
+          if (local && local.salt && local.hash) {
+            try {
+              const j = await apiPost('/api/register', { username, salt: local.salt, hash: local.hash });
+              token = j.token;
+              setSync(username, { token, dirty: true }); /* 本地数据需要推上云 */
+            } catch (e2) {
+              if (e2.code === 'exists') { /* 竞态：已被迁移，走正常登录 */ }
+              else throw e2;
+            }
+          } else {
+            return setMsg('用户名或密码不对哦');
+          }
+        } else throw err;
+      }
+      if (!token) {
+        const hash = await hashPw(password, salt);
+        try {
+          const j = await apiPost('/api/login', { username, hash });
+          token = j.token;
+        } catch (err) {
+          return setMsg('用户名或密码不对哦');
+        }
+        users[username] = { salt, hash };
+        lsSet(LS_USERS, users);
+        setSync(username, { token, dirty: getSync(username).dirty || false });
+      }
     }
     localStorage.setItem(LS_SESSION, username);
     state.username = username;
     enterApp();
+    syncAfterAuth(username);
   } catch (err) {
-    setMsg('出错了：' + (err && err.message ? err.message : err));
+    setMsg('网络好像不太行，稍后再试～（' + (err && err.message ? err.message : err) + '）');
   }
   return false;
 }
@@ -367,6 +470,48 @@ function updateEarnPreview() {
 
 /* ---------- 工具 ---------- */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const todayStr = () => new Date().toISOString().slice(0, 10);
+
+/* ---------- Excel 导出（SheetJS） ---------- */
+function exportAssets() {
+  if (typeof XLSX === 'undefined') return alert('Excel 库还没加载好，刷新一下试试～');
+  const d = state.data;
+  const wb = XLSX.utils.book_new();
+  const cashAoA = [['项目名称', '金额(¥)']].concat(d.cash.map((i) => [i.name, num(i.amount)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cashAoA), '现金资产');
+  const fundAoA = [['基金名称', '份额', '市值(¥)']].concat(d.funds.map((i) => [i.name, num(i.shares), num(i.marketValue)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fundAoA), '基金资产');
+  const snaps = [...d.snapshots].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const snapAoA = [['日期', '现金(¥)', '基金(¥)', '总资产(¥)']].concat(snaps.map((s) => [s.date, num(s.cash), num(s.fund), num(s.total)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(snapAoA), '资产快照');
+  XLSX.writeFile(wb, '资产_' + state.username + '_' + todayStr() + '.xlsx');
+}
+function exportEarnings() {
+  if (typeof XLSX === 'undefined') return alert('Excel 库还没加载好，刷新一下试试～');
+  const d = state.data;
+  const wb = XLSX.utils.book_new();
+  const list = [...d.earnings].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const detailAoA = [['日期', '产品/项目', '成本', '单价', '数量', '销售额', '盈利']].concat(list.map((i) => [i.date, i.product, num(i.cost), num(i.price), num(i.quantity), num(i.sales), num(i.profit)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailAoA), '赚钱明细');
+  const g = groupEarn(d.earnings, state.earnPeriod);
+  const axis = state.earnPeriod === 'year' ? '年份' : '月份';
+  const aggAoA = [[axis, '总收入', '盈利']].concat(g.labels.map((l, i) => [l, g.sales[i], g.profit[i]]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aggAoA), '汇总');
+  XLSX.writeFile(wb, '赚钱_' + state.username + '_' + todayStr() + '.xlsx');
+}
+function exportExpenses() {
+  if (typeof XLSX === 'undefined') return alert('Excel 库还没加载好，刷新一下试试～');
+  const d = state.data;
+  const wb = XLSX.utils.book_new();
+  const list = [...d.expenses].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const detailAoA = [['日期', '项目', '金额']].concat(list.map((i) => [i.date, i.item, num(i.amount)]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(detailAoA), '开支明细');
+  const g = groupExpense(d.expenses, state.expPeriod);
+  const axis = state.expPeriod === 'year' ? '年份' : '月份';
+  const aggAoA = [[axis, '总消费']].concat(g.labels.map((l, i) => [l, g.data[i]]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aggAoA), '汇总');
+  XLSX.writeFile(wb, '开支_' + state.username + '_' + todayStr() + '.xlsx');
+}
 
 /* ---------- 启动 ---------- */
 window.switchAuth = switchAuth;
@@ -380,6 +525,9 @@ window.addEarning = addEarning;
 window.addExpense = addExpense;
 window.setEarnPeriod = setEarnPeriod;
 window.setExpPeriod = setExpPeriod;
+window.exportAssets = exportAssets;
+window.exportEarnings = exportEarnings;
+window.exportExpenses = exportExpenses;
 
 function showTab(name) {
   document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
@@ -387,5 +535,8 @@ function showTab(name) {
   setTimeout(() => Object.values(charts).forEach((c) => c && c.resize()), 50);
 }
 
-if (curUser() && getUsers()[curUser()]) { state.username = curUser(); enterApp(); }
-else { switchAuth('login'); }
+if (curUser() && getUsers()[curUser()]) {
+  state.username = curUser();
+  enterApp();
+  syncAfterAuth(state.username); /* 刷新时静默拉云端最新数据 */
+} else { switchAuth('login'); }
