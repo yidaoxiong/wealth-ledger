@@ -54,9 +54,8 @@ async function handleApi(request, env) {
       const row = await db.prepare('SELECT hash, token FROM users WHERE username = ?').bind(username).first();
       if (!row) return bad('no_user', 404);
       if (row.hash !== hash) return bad('bad_password', 401);
-      const token = randToken();
-      await db.prepare('UPDATE users SET token = ? WHERE username = ?').bind(token, username).run();
-      return J({ ok: true, token });
+      /* 多设备共用同一 token：登录不轮换，避免把其他设备踢下线 */
+      return J({ ok: true, token: row.token });
     }
     case '/api/pull': {
       const { token } = body;

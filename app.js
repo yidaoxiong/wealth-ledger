@@ -43,16 +43,51 @@ async function apiPost(path, body) {
 }
 
 let pushTimer = null;
+function setSyncStatus(kind) {
+  const el = $('#sync-status');
+  if (!el) return;
+  if (kind === 'syncing') { el.textContent = '⟳ 同步中…'; el.className = 'sync-status'; }
+  else if (kind === 'ok') { el.textContent = '☁️ 已同步 ' + new Date().toTimeString().slice(0, 5); el.className = 'sync-status ok'; }
+  else if (kind === 'fail') { el.textContent = '⚠️ 云同步失败'; el.className = 'sync-status fail'; }
+  else { el.textContent = ''; el.className = 'sync-status'; }
+}
 function schedulePush(u, data) {
   clearTimeout(pushTimer);
+  setSyncStatus('syncing');
   pushTimer = setTimeout(async () => {
     const s = getSync(u);
     if (!s.token) return;
     try {
       await apiPost('/api/push', { username: u, token: s.token, data: JSON.stringify(data) });
       markDirty(u, false);
-    } catch (e) { console.warn('云端同步失败（下次保存会自动重试）', e.message); }
+      setSyncStatus('ok');
+    } catch (e) {
+      if (e.code === 'bad_token' && (await reAuth(u))) {
+        /* token 失效已自动重登，重试一次 */
+        try {
+          await apiPost('/api/push', { username: u, token: getSync(u).token, data: JSON.stringify(data) });
+          markDirty(u, false);
+          setSyncStatus('ok');
+          return;
+        } catch (e2) { setSyncStatus('fail'); return; }
+      }
+      console.warn('云端同步失败（下次保存会自动重试）', e.message);
+      setSyncStatus('fail');
+    }
   }, 1200);
+}
+
+/* token 失效时用本地凭据静默重登换新 token（多设备/历史遗留 token 自愈） */
+async function reAuth(u) {
+  const local = getUsers()[u];
+  if (!local || !local.hash) return null;
+  try {
+    const j = await apiPost('/api/login', { username: u, hash: local.hash });
+    const s = getSync(u);
+    s.token = j.token;
+    setSync(u, s);
+    return j.token;
+  } catch { return null; }
 }
 
 async function cloudPull(u) {
@@ -72,10 +107,23 @@ async function syncAfterAuth(username) {
       lsSet(dataKey(username), cloud);
       state.data = cloud;
       renderAll();
+      setSyncStatus('ok');
     } else {
       schedulePush(username, lsGet(dataKey(username), emptyData()));
     }
-  } catch (e) { console.warn('云端拉取失败，先用本地数据', e.message); }
+  } catch (e) {
+    if (e.code === 'bad_token' && (await reAuth(username))) {
+      /* token 失效已自动重登，重拉一次 */
+      try {
+        const cloud = await cloudPull(username);
+        if (cloud) { lsSet(dataKey(username), cloud); state.data = cloud; renderAll(); }
+        setSyncStatus('ok');
+        return;
+      } catch (e2) { setSyncStatus('fail'); return; }
+    }
+    console.warn('云端拉取失败，先用本地数据', e.message);
+    setSyncStatus('fail');
+  }
 }
 
 /* ---------- 密码哈希（浏览器内 PBKDF2，盐值随机） ---------- */

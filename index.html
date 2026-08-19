@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=20260819" />
 </head>
 <body>
   <!-- ===== 登录 / 注册 ===== -->
@@ -38,6 +38,7 @@
     <header class="topbar">
       <div class="brand">🐷 记账小管家</div>
       <div class="user-area">
+        <span id="sync-status" class="sync-status"></span>
         <span id="hello">嗨，小老板！</span>
         <button class="ghost-btn" onclick="doLogout()">退出</button>
       </div>
@@ -164,6 +165,6 @@
 
   <script src="chart.umd.min.js"></script>
   <script src="xlsx.full.min.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260819"></script>
 </body>
 </html>

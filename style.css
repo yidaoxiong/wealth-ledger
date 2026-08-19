@@ -99,6 +99,9 @@ body {
 .brand { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; color: var(--purple); }
 .user-area { display: flex; align-items: center; gap: 14px; }
 .user-area #hello { font-weight: 600; color: var(--ink); font-size: 14px; }
+.sync-status { font-size: 12px; color: var(--gray); white-space: nowrap; }
+.sync-status.ok { color: #149e61; }
+.sync-status.fail { color: #e0413e; font-weight: 600; }
 .nav { display: flex; gap: 8px; padding: 16px 16px 0; flex-wrap: wrap; max-width: 960px; margin: 0 auto; }
 .nav-btn {
   flex: 1; min-width: 120px; border: 1px solid var(--border); cursor: pointer; padding: 13px;
